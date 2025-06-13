@@ -1,13 +1,13 @@
-// A custom card that actually looks like something
-// Not like something good, mind you, but *something* at least.
-
 class LightMapCard extends HTMLElement {
   private _config: LightMapConfiguration;
-  private setupComplete: boolean = false;
+  private imageSpawned: boolean = false;
+  private buttonsSpawned: boolean = false;
   private _hass: HomeAssistant;
 
   private imageElement?: HTMLElement;
+  private cardElement?: HTMLElement;
   private static svgContent?: string;
+  private static defaultIcon = 'mdi:lightbulb';
 
   constructor() {
     super();
@@ -33,31 +33,74 @@ class LightMapCard extends HTMLElement {
    * Create the main svg content
    */
   private async spawnImage() {
-    if (!this.setupComplete) {
-      const content = LightMapCard.svgContent || await this.loadSvgContent();
-      const card = document.createElement("ha-card");
+    if (this.imageSpawned)
+      return;
+    const content = LightMapCard.svgContent || await this.loadSvgContent();
+    this.cardElement = document.createElement("ha-card");
 
-      this.imageElement = document.createElement("svg");
-      this.imageElement.innerHTML = content;
-      card.appendChild(this.imageElement);
+    this.imageElement = document.createElement("svg");
+    this.imageElement.innerHTML = content;
+    this.cardElement.appendChild(this.imageElement);
 
-      this.appendChild(card);
-      this.setupComplete = true;
+    this.appendChild(this.cardElement);
+    this.imageSpawned = true;
+  }
+
+  /**
+   * Create icons on the map for each light entity
+   */
+  private spawnButtons() {
+    if (this.buttonsSpawned || !this.imageSpawned || !this._hass?.states)
+      return;
+    this.buttonsSpawned = true;
+
+    const lightList = this.imageElement.getElementsByClassName('light');
+    const entities: { [entityId: string]: SVGElement[] } = {};
+
+    for (let i = 0; i < lightList.length; i++) {
+      const element = lightList[i] as SVGElement;
+      element.classList.forEach(c => {
+        if (!c.startsWith('light.'))
+          return;
+        if (!entities[c])
+          entities[c] = [];
+        entities[c].push(element);
+      });
+    }
+
+    for (let entityId of Object.keys(entities)) {
+      const state = this._hass.states[entityId];
+      if (!state)
+        continue;
+      this.createIcon(state, entities[entityId]);
     }
   }
 
   set hass(hass: HomeAssistant) {
     this._hass = hass;
 
-    // todo: update states
-    Object.keys(hass.states)
-      .filter(k => k.startsWith('light.'))
-      .forEach(k => {
-        this.updateLightState(hass.states[k]);
-      })
+    this.spawnButtons();
+    this.updateLightStates();
   }
 
-  private updateLightState(state: LightState) {
+  /**
+   * Update the state of all mapped lights
+   */
+  private updateLightStates(): void {
+    Object.keys(this._hass.states)
+      .filter(k => k.startsWith('light.'))
+      .forEach(k => {
+        this.updateLight(this._hass.states[k]);
+      })
+
+  }
+
+  /**
+   * Update the brightness/color of all elements corresponding to a light
+   * @param state The light state
+   * @returns Nothing
+   */
+  private updateLight(state: LightState): void {
     if (!this.imageElement)
       return;
     const gradients = this.imageElement.getElementsByClassName(state.entity_id);
@@ -115,12 +158,76 @@ class LightMapCard extends HTMLElement {
       return;
     element.gradient = gradient;
   }
+
+  /**
+   * Create a button linking to the light
+   * @param entity The entity to link to
+   * @param gradients The associated gradients on the map
+   */
+  private createIcon(entity: LightState, gradients: SVGElement[]): void {
+    const html = `<ha-icon-button
+                    class="map-light"
+                    label="${entity.attributes?.friendly_name}"
+                    title="Channelup"
+                    data-entity="${entity.entity_id}"
+                  >
+                    <ha-icon icon="${entity.attributes?.icon || LightMapCard.defaultIcon}"></ha-icon>  
+                  </ha-icon-button>`;
+    this.cardElement.insertAdjacentHTML('beforeend', html);
+    const newElement = this.cardElement.lastChild;
+    newElement.addEventListener('click', () => this.openDetails(entity.entity_id));
+  }
+
+  /**
+   * Open the details dialog for a light
+   * @param entityId The light's ID
+   * @returns Event
+   */
+  private openDetails(entityId: string): HassMoreInfoEvent {
+    const event = new Event('hass-more-info', {
+      bubbles: true,
+      cancelable: false,
+      composed: true
+    }) as HassMoreInfoEvent;
+    event.detail = {
+      entityId: entityId
+    };
+    this.cardElement.dispatchEvent(event);
+    return event;
+  }
+
+  /**
+   * Find the midpoint between all elements representing a light
+   * @param gradients Gradients representing the light
+   * @returns Midpoint
+   */
+  private calculateCenter(gradients: SVGElement[]): Cartesian {
+    return {
+      x: 0,
+      y: 0
+    };
+  }
 }
+
+type HassMoreInfoEvent = Event & {
+  detail: {
+    entityId: string
+  }
+};
+
+type Cartesian = {
+  x: number,
+  y: number
+};
 
 type ColoredElement = SVGElement & {
   colorMapped: boolean,
   gradient: SVGGradientElement
-}
+};
+
+type IconElement = HTMLAnchorElement & {
+  entityId: string;
+};
 
 type LightMapConfiguration = {
   maxBrightness: number;

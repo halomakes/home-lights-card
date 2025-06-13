@@ -3,6 +3,7 @@
 .light, .light * {
     mix-blend-mode: plus-lighter;
     transition: all .5s ease;
+    filter: blur(4px);
 }
 stop {
     transition: all .5s ease;
