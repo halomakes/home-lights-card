@@ -37,6 +37,7 @@ class LightMapCard extends HTMLElement {
       return;
     const content = LightMapCard.svgContent || await this.loadSvgContent();
     this.cardElement = document.createElement("ha-card");
+    this.cardElement.style.position = 'relative';
 
     this.imageElement = document.createElement("svg");
     this.imageElement.innerHTML = content;
@@ -50,8 +51,8 @@ class LightMapCard extends HTMLElement {
    * Create icons on the map for each light entity
    */
   private spawnButtons() {
-    if (this.buttonsSpawned || !this.imageSpawned || !this._hass?.states)
-      return;
+    if (this.buttonsSpawned || !this.imageSpawned || !this._hass?.states || !this.cardElement)
+      return; // wait for everything to be ready so we can get positions
     this.buttonsSpawned = true;
 
     const lightList = this.imageElement.getElementsByClassName('light');
@@ -165,11 +166,13 @@ class LightMapCard extends HTMLElement {
    * @param gradients The associated gradients on the map
    */
   private createIcon(entity: LightState, gradients: SVGElement[]): void {
+    const midpoint = this.calculateCenter(gradients);
     const html = `<ha-icon-button
                     class="map-light"
                     label="${entity.attributes?.friendly_name}"
                     title="Channelup"
                     data-entity="${entity.entity_id}"
+                    style="position: absolute; top: ${midpoint.y}px; left: ${midpoint.x}px; transform: translateX(-50%) translateY(-50%)"
                   >
                     <ha-icon icon="${entity.attributes?.icon || LightMapCard.defaultIcon}"></ha-icon>  
                   </ha-icon-button>`;
@@ -198,14 +201,23 @@ class LightMapCard extends HTMLElement {
 
   /**
    * Find the midpoint between all elements representing a light
-   * @param gradients Gradients representing the light
+   * @param input Gradients representing the light
    * @returns Midpoint
    */
-  private calculateCenter(gradients: SVGElement[]): Cartesian {
-    return {
-      x: 0,
-      y: 0
-    };
+  private calculateCenter(input: SVGElement[]): Cartesian {
+    const calculateCenter = (single: SVGElement): Cartesian => {
+      const parentRect = this.cardElement.getBoundingClientRect();
+      const elementRect = single.getBoundingClientRect();
+
+      return {
+        y: elementRect.top - parentRect.top + (elementRect.height / 2),
+        x: elementRect.left - parentRect.left + (elementRect.width / 2),
+      };
+    }
+
+    return input
+      .map(calculateCenter)
+      .reduce((sum, value) => ({ x: sum.x + (value.x / input.length), y: sum.y + (value.y / input.length) }), { x: 0, y: 0 })
   }
 }
 
