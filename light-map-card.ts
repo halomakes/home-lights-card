@@ -26,7 +26,13 @@ class LightMapCard extends HTMLElement {
   async setConfig(config: LightMapConfiguration): Promise<void> {
     this._config = config;
 
-    // Make sure this only runs once
+    await this.spawnImage();
+  }
+
+  /**
+   * Create the main svg content
+   */
+  private async spawnImage() {
     if (!this.setupComplete) {
       const content = LightMapCard.svgContent || await this.loadSvgContent();
       const card = document.createElement("ha-card");
@@ -59,38 +65,55 @@ class LightMapCard extends HTMLElement {
       return;
     for (let i = 0; i < gradients.length; i++) {
       const element = gradients[i] as ColoredElement;
-      const brightness = (state.attributes?.brightness ?? (state.state == 'on' ? 255 : 0)) / 255;
-      element.style.opacity = `${brightness * (this._config?.maxBrightness ?? 1)}`;
 
       if (!element.colorMapped) {
-        element.colorMapped = true;
-
-        const fillSelector = element.tagName == 'path'
-          ? element.getAttribute('fill')
-          : (element.getElementsByTagName('path')[0]?.getAttribute('fill'));
-        if (!fillSelector)
-          continue;
-        const match = /^url\((.+)\)$/.exec(fillSelector);
-        if (!match)
-          continue;
-        const query = match[1];
-        if (!query)
-          continue;
-        const gradient = this.imageElement.querySelector(query) as SVGGradientElement;
-        if (!gradient)
-          continue;
-        element.gradient = gradient;
+        this.tryMapGradient(element);
       }
+      this.updateDisplay(state, element);
+    }
+  }
 
-      if (element.gradient && state.attributes?.rgb_color?.length == 3) {
-        const color = state.attributes.rgb_color;
-        const stops = element.gradient.getElementsByTagName('stop');
-        for (let i = 0; i < stops.length; i++) {
-          const stop = stops[i] as SVGStopElement;
-          stop.style.stopColor = `rgb(${color[0]},${color[1]},${color[2]})`
-        }
+  /**
+   * Update the color/opacity of an element to match a hass light state
+   * @param state State of the associated entity
+   * @param element The element to update
+   */
+  private updateDisplay(state: LightState, element: ColoredElement) {
+    const brightness = (state.attributes?.brightness ?? (state.state == 'on' ? 255 : 0)) / 255;
+    element.style.opacity = `${brightness * (this._config?.maxBrightness ?? 1)}`;
+    if (element.gradient && state.attributes?.rgb_color?.length == 3) {
+      const color = state.attributes.rgb_color;
+      const stops = element.gradient.getElementsByTagName('stop');
+      for (let i = 0; i < stops.length; i++) {
+        const stop = stops[i] as SVGStopElement;
+        stop.style.stopColor = `rgb(${color[0]},${color[1]},${color[2]})`;
       }
     }
+  }
+
+  /**
+   * Attempt to find the LinearGradient or RadialGradient for a path and attach it to the .gradient property
+   * @param element the element to find the gradient for
+   * @returns nothing
+   */
+  private tryMapGradient(element: ColoredElement): void {
+    element.colorMapped = true;
+
+    const fillSelector = element.tagName == 'path'
+      ? element.getAttribute('fill')
+      : (element.getElementsByTagName('path')[0]?.getAttribute('fill'));
+    if (!fillSelector)
+      return;
+    const match = /^url\((.+)\)$/.exec(fillSelector);
+    if (!match)
+      return;
+    const query = match[1];
+    if (!query)
+      return;
+    const gradient = this.imageElement.querySelector(query) as SVGGradientElement;
+    if (!gradient)
+      return;
+    element.gradient = gradient;
   }
 }
 
