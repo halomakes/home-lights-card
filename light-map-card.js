@@ -59,7 +59,7 @@ class LightMapCard extends HTMLElement {
         for (let i = 0; i < gradients.length; i++) {
             const element = gradients[i];
             const brightness = ((_b = (_a = state.attributes) === null || _a === void 0 ? void 0 : _a.brightness) !== null && _b !== void 0 ? _b : (state.state == 'on' ? 255 : 0)) / 255;
-            element.style.opacity = `${brightness * ((_d = (_c = this._config) === null || _c === void 0 ? void 0 : _c.maxBrightness) !== null && _d !== void 0 ? _d : 0.8)}`;
+            element.style.opacity = `${brightness * ((_d = (_c = this._config) === null || _c === void 0 ? void 0 : _c.maxBrightness) !== null && _d !== void 0 ? _d : 1)}`;
             if (!element.colorMapped) {
                 element.colorMapped = true;
                 const fillSelector = element.tagName == 'path'

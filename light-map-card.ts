@@ -60,7 +60,7 @@ class LightMapCard extends HTMLElement {
     for (let i = 0; i < gradients.length; i++) {
       const element = gradients[i] as ColoredElement;
       const brightness = (state.attributes?.brightness ?? (state.state == 'on' ? 255 : 0)) / 255;
-      element.style.opacity = `${brightness * (this._config?.maxBrightness ?? 0.8)}`;
+      element.style.opacity = `${brightness * (this._config?.maxBrightness ?? 1)}`;
 
       if (!element.colorMapped) {
         element.colorMapped = true;
