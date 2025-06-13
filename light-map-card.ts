@@ -6,12 +6,33 @@ class LightMapCard extends HTMLElement {
 
   private imageElement?: HTMLElement;
   private cardElement?: HTMLElement;
+  private buttons: ButtonElement[] = [];
   private static svgContent?: string;
   private static defaultIcon = 'mdi:lightbulb';
 
   constructor() {
     super();
     this.loadSvgContent();
+    window.addEventListener('resize', () => this.updateButtonPositions());
+  }
+
+  set hass(hass: HomeAssistant) {
+    this._hass = hass;
+
+    this.spawnButtons();
+    this.updateLightStates();
+  }
+
+  async setConfig(config: LightMapConfiguration): Promise<void> {
+    this._config = config;
+
+    await this.spawnImage();
+    this.updateScaling();
+    this.updateButtonPositions();
+  }
+
+  connectedCallback(): void {
+    this.updateButtonPositions();
   }
 
   private async loadSvgContent(): Promise<string> {
@@ -21,12 +42,6 @@ class LightMapCard extends HTMLElement {
     const content = await response.text();
     LightMapCard.svgContent = content;
     return content;
-  }
-
-  async setConfig(config: LightMapConfiguration): Promise<void> {
-    this._config = config;
-
-    await this.spawnImage();
   }
 
   /**
@@ -73,15 +88,8 @@ class LightMapCard extends HTMLElement {
       const state = this._hass.states[entityId];
       if (!state)
         continue;
-      this.createIcon(state, entities[entityId]);
+      this.buttons.push(this.createIcon(state, entities[entityId]));
     }
-  }
-
-  set hass(hass: HomeAssistant) {
-    this._hass = hass;
-
-    this.spawnButtons();
-    this.updateLightStates();
   }
 
   /**
@@ -93,7 +101,20 @@ class LightMapCard extends HTMLElement {
       .forEach(k => {
         this.updateLight(this._hass.states[k]);
       })
+  }
 
+  private updateScaling(): void {
+    if (this._config?.width && this.imageElement) {
+      const sizeElement = this.imageElement.firstChild as SVGElement;
+      sizeElement.setAttribute('width', this._config?.width);
+      sizeElement.setAttribute('height', 'auto');
+    }
+  }
+
+  private updateButtonPositions(): void {
+    if (!this.isConnected)
+      return;
+    this.buttons.forEach(b => this.updateIconPosition(b));
   }
 
   /**
@@ -165,20 +186,30 @@ class LightMapCard extends HTMLElement {
    * @param entity The entity to link to
    * @param gradients The associated gradients on the map
    */
-  private createIcon(entity: LightState, gradients: SVGElement[]): void {
+  private createIcon(entity: LightState, gradients: SVGElement[]): ButtonElement {
     const midpoint = this.calculateCenter(gradients);
     const html = `<ha-icon-button
                     class="map-light"
                     label="${entity.attributes?.friendly_name}"
                     title="Channelup"
                     data-entity="${entity.entity_id}"
-                    style="position: absolute; top: ${midpoint.y}px; left: ${midpoint.x}px; transform: translateX(-50%) translateY(-50%)"
+                    style="position: absolute; top: ${midpoint.y}px; left: ${midpoint.x}px; transform: translateX(-50%) translateY(-50%);"
                   >
                     <ha-icon icon="${entity.attributes?.icon || LightMapCard.defaultIcon}"></ha-icon>  
                   </ha-icon-button>`;
     this.cardElement.insertAdjacentHTML('beforeend', html);
-    const newElement = this.cardElement.lastChild;
+    const newElement = this.cardElement.lastChild as ButtonElement;
     newElement.addEventListener('click', () => this.openDetails(entity.entity_id));
+    newElement.gradients = gradients;
+    return newElement;
+  }
+
+  private updateIconPosition(button: ButtonElement): void {
+    if (!button.gradients?.length)
+      return;
+    const midpoint = this.calculateCenter(button.gradients);
+    button.style.left = `${midpoint.x}px`;
+    button.style.top = `${midpoint.y}px`;
   }
 
   /**
@@ -232,6 +263,10 @@ type Cartesian = {
   y: number
 };
 
+type ButtonElement = HTMLElement & {
+  gradients: SVGElement[]
+};
+
 type ColoredElement = SVGElement & {
   colorMapped: boolean,
   gradient: SVGGradientElement
@@ -243,6 +278,7 @@ type IconElement = HTMLAnchorElement & {
 
 type LightMapConfiguration = {
   maxBrightness: number;
+  width: string;
 };
 
 type HomeAssistant = {
